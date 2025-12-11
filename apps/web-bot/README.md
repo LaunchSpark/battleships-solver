@@ -3,8 +3,11 @@
 Responsive React web app for the Battleship Bot. Intended to run in desktop and mobile browsers and build as static assets for GitHub Pages.
 
 ## Development
-- TODO: configure a bundler/dev server (e.g., Vite) for local development.
-- Uses the shared `battleship-engine` package for game logic and move suggestions.
+- Uses [Vite](https://vitejs.dev/) for the dev server and production build.
+- Run `npm install` from the repo root to install workspace dependencies.
+- Start a local dev server: `npm run dev:web` (opens at http://localhost:5173 by default).
+- Create a production build: `npm run build` (outputs to `apps/web-bot/dist`).
+- Preview the production build locally: `npm run preview --workspace apps/web-bot`.
 
 ## UI data flow
 - Ensure the UI passes a `gameData` object directly into `getBestMove(gameData)` with the following shape:
