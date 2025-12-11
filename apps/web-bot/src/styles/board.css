@@ -1,0 +1,49 @@
+/* apps/web-bot/src/styles/board.css */
+
+.board {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
+  gap: 2px;
+}
+
+.cell {
+  background: #f7f7f7;
+  border: 1px solid #e0e0e0;
+  padding-top: 100%; /* square cells */
+  position: relative;
+}
+
+.cell-hit {
+  background: #ff9f9f;
+}
+
+.cell-miss {
+  background: #d9e7ff;
+}
+
+.cell-ship {
+  background: #cfe3cf;
+}
+
+.best-move-panel,
+.controls {
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.controls button {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
