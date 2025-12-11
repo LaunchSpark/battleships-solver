@@ -1,0 +1,54 @@
+/* apps/web-bot/src/styles/layout.css */
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 1rem;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+}
+
+.playground {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 1rem;
+  gap: 1rem;
+}
+
+/* Mobile-first: stacked layout */
+
+.playground-board,
+.playground-sidebar {
+  width: 100%;
+}
+
+/* Larger screens: side-by-side */
+
+@media (min-width: 768px) {
+  .playground {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .playground-board {
+    flex: 2;
+  }
+
+  .playground-sidebar {
+    flex: 1;
+  }
+}

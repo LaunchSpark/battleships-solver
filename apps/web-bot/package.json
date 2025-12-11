@@ -1,0 +1,15 @@
+{
+  "name": "web-bot",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "battleship-engine": "0.1.0"
+  },
+  "scripts": {
+    "dev": "echo \"TODO: wire up dev server (e.g., Vite)\" && exit 0",
+    "build": "echo \"TODO: wire up build script\" && exit 0",
+    "preview": "echo \"TODO: wire up preview script\" && exit 0"
+  }
+}

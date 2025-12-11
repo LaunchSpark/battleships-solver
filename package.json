@@ -1,0 +1,14 @@
+{
+  "name": "battleship-bot-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace apps/web-bot",
+    "dev:web": "npm run dev --workspace apps/web-bot",
+    "dev:api": "npm run dev --workspace apps/api",
+    "lint": "echo \"TODO: add lint script\" && exit 0"
+  }
+}
