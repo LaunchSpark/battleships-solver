@@ -1,0 +1,5 @@
+node_modules/
+dist/
+apps/web-bot/dist/
+*.log
+npm-debug.log*
