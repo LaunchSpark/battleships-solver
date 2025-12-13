@@ -1,5 +1,7 @@
 // packages/battleship-engine/src/ai/bot.js
 
+import { TILE_STATUS } from "../gameState.js";
+
 // getBestMove(gameData) is the main entry point for the bot logic.
 // It expects a serializable gameData object with:
 // {
@@ -7,13 +9,6 @@
 //   board: Tile[][] where Tile = { status: 0|1|2|3, heat: number },
 //   boats: [{ name, length, sunk }]
 // }
-
-const STATUS = {
-  UNKNOWN: 0,
-  WATER: 1,
-  HIT: 2,
-  SUNK: 3
-};
 
 function buildHeatMap(gameData) {
   const board = Array.isArray(gameData?.board) ? gameData.board : [];
@@ -24,14 +19,18 @@ function buildHeatMap(gameData) {
   const hitCells = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (board[r][c]?.status === STATUS.HIT) {
+      if (board[r][c]?.status === TILE_STATUS.HIT) {
         hitCells.push({ r, c });
       }
     }
   }
 
   const prob = Array.from({ length: rows }, () => Array.from({ length: cols }, () => 0));
-  const remainingBoats = boats.filter((boat) => !boat.sunk);
+  const remainingBoats = boats.filter((boat) => !boat.sunk && boat.length > 0);
+
+  // Map of hit coverage counts so we can ensure every hit is explained by at least one
+  // possible silhouette. This keeps the solver honest about orientation constraints.
+  const hitCoverage = hitCells.map(() => 0);
 
   function inBounds(row, col) {
     return row >= 0 && row < rows && col >= 0 && col < cols;
@@ -40,12 +39,24 @@ function buildHeatMap(gameData) {
   function canShipOccupy(row, col) {
     if (!inBounds(row, col)) return false;
     const status = board[row][col]?.status;
-    if (status === STATUS.WATER) return false;
-    if (status === STATUS.SUNK) return false;
+    if (status === TILE_STATUS.MISS) return false;
+    if (status === TILE_STATUS.SUNK) return false;
     return true; // UNKNOWN or HIT
   }
 
+  function recordPlacement(cells) {
+    // Track how many silhouettes could logically include each HIT cell.
+    cells.forEach(({ r, c }) => {
+      hitCells.forEach((hit, index) => {
+        if (hit.r === r && hit.c === c) {
+          hitCoverage[index] += 1;
+        }
+      });
+    });
+  }
+
   function isValidPlacement(length, startRow, startCol, orientation) {
+    const cells = [];
     for (let offset = 0; offset < length; offset++) {
       let r = startRow;
       let c = startCol;
@@ -57,10 +68,13 @@ function buildHeatMap(gameData) {
       }
 
       if (!canShipOccupy(r, c)) {
-        return false;
+        return null;
       }
+
+      cells.push({ r, c });
     }
-    return true;
+
+    return cells;
   }
 
   for (const boat of remainingBoats) {
@@ -68,30 +82,36 @@ function buildHeatMap(gameData) {
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col <= cols - L; col++) {
-        if (isValidPlacement(L, row, col, 'H')) {
-          for (let offset = 0; offset < L; offset++) {
-            prob[row][col + offset] += 1;
-          }
+        const cells = isValidPlacement(L, row, col, 'H');
+        if (cells) {
+          recordPlacement(cells);
+          cells.forEach(({ r, c }) => {
+            prob[r][c] += 1;
+          });
         }
       }
     }
 
     for (let row = 0; row <= rows - L; row++) {
       for (let col = 0; col < cols; col++) {
-        if (isValidPlacement(L, row, col, 'V')) {
-          for (let offset = 0; offset < L; offset++) {
-            prob[row + offset][col] += 1;
-          }
+        const cells = isValidPlacement(L, row, col, 'V');
+        if (cells) {
+          recordPlacement(cells);
+          cells.forEach(({ r, c }) => {
+            prob[r][c] += 1;
+          });
         }
       }
     }
   }
 
-  for (const { r, c } of hitCells) {
-    if (prob[r][c] === 0) {
-      prob[r][c] = 1;
+  // If any HIT cell could not be explained by a valid silhouette, keep it visible in the
+  // heat map so the UI and reasoning can flag the inconsistency.
+  hitCells.forEach(({ r, c }, index) => {
+    if (hitCoverage[index] === 0) {
+      prob[r][c] = Math.max(prob[r][c], 1);
     }
-  }
+  });
 
   let maxProb = 0;
   for (let r = 0; r < rows; r++) {
@@ -115,7 +135,7 @@ function buildHeatMap(gameData) {
 
   gameData.highHeat = maxProb > 0 ? 1 : 0;
 
-  return heat;
+  return { heat, uncoveredHits: hitCells.filter((_, index) => hitCoverage[index] === 0) };
 }
 
 function chooseNextShot(gameData, heat) {
@@ -129,7 +149,7 @@ function chooseNextShot(gameData, heat) {
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      if (board[r][c]?.status === STATUS.UNKNOWN) {
+      if (board[r][c]?.status === TILE_STATUS.UNKNOWN) {
         if (heat?.[r]?.[c] > bestScore) {
           bestScore = heat[r][c];
           bestR = r;
@@ -153,7 +173,7 @@ export function getBestMove(gameData) {
     };
   }
 
-  const heat = buildHeatMap(gameData);
+  const { heat, uncoveredHits } = buildHeatMap(gameData);
   const choice = chooseNextShot(gameData, heat);
 
   const remainingBoats = (gameData?.boats ?? []).filter((boat) => !boat.sunk);
@@ -171,11 +191,15 @@ export function getBestMove(gameData) {
   }
 
   const normalizedScore = typeof choice.heat === 'number' && choice.heat >= 0 ? choice.heat : 0;
+  const hitCoverageNote = uncoveredHits.length > 0
+    ? ` Some hit cells are not covered by any valid silhouette: ${uncoveredHits
+      .map((hit) => `[r${hit.r + 1},c${hit.c + 1}]`).join(', ')}. Review recent shots or boat metadata.`
+    : '';
 
   return {
     row: choice.row,
     col: choice.col,
-    reason: `Selected the highest-heat unknown tile (${normalizedScore}) with ${remainingLabel}.`,
+    reason: `Selected the highest-heat unknown tile (${normalizedScore}) with ${remainingLabel}.${hitCoverageNote}`,
     score: normalizedScore
   };
 }

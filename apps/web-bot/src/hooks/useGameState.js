@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createInitialGameState } from "battleship-engine";
 import { getBestMove } from "../services/botEngineClient.js";
 
@@ -7,6 +7,44 @@ export function useGameState() {
     createInitialGameState()
   );
   const [lastSuggestion, setLastSuggestion] = useState(null);
+  const boatIdRef = useRef(1);
+
+  function addBoat(length) {
+    const safeLength = Math.max(1, Math.round(Number(length) || 1));
+    const id = boatIdRef.current++;
+    const name = `Boat ${id}`;
+    setGameState((prev) => ({
+      ...prev,
+      boats: [...(prev.boats ?? []), { id, name, length: safeLength, sunk: false }]
+    }));
+  }
+
+  function toggleBoatSunk(id) {
+    setGameState((prev) => ({
+      ...prev,
+      boats: (prev.boats ?? []).map((boat) =>
+        boat.id === id ? { ...boat, sunk: !boat.sunk } : boat
+      )
+    }));
+  }
+
+  function removeBoat(id) {
+    setGameState((prev) => ({
+      ...prev,
+      boats: (prev.boats ?? []).filter((boat) => boat.id !== id)
+    }));
+  }
+
+  function resetBoard() {
+    setGameState((prev) =>
+      createInitialGameState({
+        rows: prev.board?.length ?? 10,
+        cols: prev.board?.[0]?.length ?? 10,
+        boats: (prev.boats ?? []).map((boat) => ({ ...boat, sunk: false }))
+      })
+    );
+    setLastSuggestion(null);
+  }
 
   async function suggestMove() {
     // For now, call the engine directly in the browser.
@@ -15,5 +53,14 @@ export function useGameState() {
     // Optionally update gameState with a suggested shot preview.
   }
 
-  return { gameState, setGameState, suggestMove, lastSuggestion };
+  return {
+    gameState,
+    setGameState,
+    suggestMove,
+    lastSuggestion,
+    addBoat,
+    toggleBoatSunk,
+    removeBoat,
+    resetBoard
+  };
 }
