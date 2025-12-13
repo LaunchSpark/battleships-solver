@@ -2,6 +2,15 @@ import { useRef, useState } from "react";
 import { createInitialGameState } from "battleship-engine";
 import { getBestMove } from "../services/botEngineClient.js";
 
+function cloneGameStateSnapshot(state) {
+  return {
+    highHeat: state?.highHeat ?? 0,
+    board: (state?.board ?? []).map((row) => row.map((cell) => ({ ...cell }))),
+    boats: (state?.boats ?? []).map((boat) => ({ ...boat })),
+    shots: Array.isArray(state?.shots) ? [...state.shots] : []
+  };
+}
+
 export function useGameState() {
   const [gameState, setGameState] = useState(() =>
     createInitialGameState()
@@ -60,10 +69,10 @@ export function useGameState() {
   }
 
   async function suggestMove() {
-    // For now, call the engine directly in the browser.
-    const move = await getBestMove(gameState);
+    const botInput = cloneGameStateSnapshot(gameState);
+    const move = await getBestMove(botInput);
+    setGameState(botInput);
     setLastSuggestion(move);
-    // Optionally update gameState with a suggested shot preview.
   }
 
   return {

@@ -9,7 +9,7 @@ const STATUS_LABELS = {
 };
 
 const STATUS_BG_CLASS = {
-  [TILE_STATUS.UNKNOWN]: "bg-slate-800 hover:bg-slate-700",
+  [TILE_STATUS.UNKNOWN]: "bg-slate-900",
   [TILE_STATUS.MISS]: "bg-sky-900",
   [TILE_STATUS.HIT]: "bg-yellow-600",
   [TILE_STATUS.SUNK]: "bg-red-700"
@@ -26,6 +26,19 @@ export default function Cell({
   const status = cell?.status ?? TILE_STATUS.UNKNOWN;
   const label = STATUS_LABELS[status] ?? "";
   const backgroundClass = STATUS_BG_CLASS[status] ?? STATUS_BG_CLASS[TILE_STATUS.UNKNOWN];
+  const heat = status === TILE_STATUS.UNKNOWN ? cell?.heat ?? 0 : 0;
+
+  const heatMapStyle =
+    status === TILE_STATUS.UNKNOWN
+      ? {
+          background: `linear-gradient(135deg,
+            rgba(56, 189, 248, ${0.08 + heat * 0.6}) 0%,
+            rgba(14, 165, 233, ${0.16 + heat * 0.55}) 45%,
+            rgba(59, 130, 246, ${0.12 + heat * 0.5}) 100%)`
+        }
+      : undefined;
+
+  const shouldShowLabel = Boolean(label && !isSuggested);
 
   const ringClass = isSuggested
     ? "ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950"
@@ -38,8 +51,9 @@ export default function Cell({
       aria-label={`cell row ${row + 1} column ${col + 1}${isSuggested ? " suggested move" : ""}`}
       role="gridcell"
       onClick={() => onCycleState?.(row, col)}
+      style={heatMapStyle}
     >
-      {label && <span className={isSuggested ? "opacity-60" : ""}>{label}</span>}
+      {shouldShowLabel && <span>{label}</span>}
       {isSuggested && (
         <span className="absolute inset-0 flex items-center justify-center text-lg" aria-hidden="true">
           🎯
