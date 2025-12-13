@@ -170,14 +170,18 @@ export default function App() {
               <div className="text-right">
                 <p className="text-xs text-slate-400">Suggested Move</p>
                 <p className="text-sm font-semibold text-slate-50">
-                  Row {lastSuggestion.row}, Col {lastSuggestion.col}
+                  Row {lastSuggestion.row + 1}, Col {lastSuggestion.col + 1}
                 </p>
               </div>
             )}
           </div>
 
           <div className="overflow-auto rounded-2xl border border-slate-800 bg-slate-950/80 p-2">
-            <BoardView gameState={gameState} setGameState={setGameState} />
+            <BoardView
+              gameState={gameState}
+              setGameState={setGameState}
+              suggestedMove={lastSuggestion}
+            />
           </div>
 
           <div className="flex flex-wrap gap-3 text-xs text-slate-300">

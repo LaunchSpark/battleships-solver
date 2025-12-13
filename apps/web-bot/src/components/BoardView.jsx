@@ -23,9 +23,18 @@ function getCellSizeClass(gridSize) {
   return "w-7 h-7";
 }
 
-export default function BoardView({ gameState, setGameState }) {
+function getLabelClass(cellSizeClass) {
+  return `${cellSizeClass} text-[10px] sm:text-xs text-slate-400 font-semibold flex items-center justify-center bg-slate-900/80 rounded-md border border-slate-800`;
+}
+
+export default function BoardView({ gameState, setGameState, suggestedMove }) {
   const gridSize = gameState.board?.length ?? 0;
   const cellSizeClass = useMemo(() => getCellSizeClass(gridSize), [gridSize]);
+  const labelClass = useMemo(() => getLabelClass(cellSizeClass), [cellSizeClass]);
+  const columnLabels = useMemo(
+    () => Array.from({ length: gridSize }, (_, index) => index + 1),
+    [gridSize]
+  );
 
   const handleCycleState = useCallback(
     (row, col) => {
@@ -41,24 +50,61 @@ export default function BoardView({ gameState, setGameState }) {
   );
 
   return (
-    <div
-      className="inline-grid gap-1"
-      role="grid"
-      aria-label="player-board"
-      style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
-    >
-      {gameState.board.map((row, rowIndex) =>
-        row.map((cell, colIndex) => (
-          <Cell
-            key={`cell-${rowIndex}-${colIndex}`}
-            cell={cell}
-            row={rowIndex}
-            col={colIndex}
-            onCycleState={handleCycleState}
-            cellSizeClass={cellSizeClass}
-          />
-        ))
-      )}
+    <div className="inline-block">
+      <div
+        className="grid gap-1"
+        aria-label="player-board"
+        style={{
+          gridTemplateColumns: `auto repeat(${gridSize}, minmax(0, 1fr)) auto`,
+          gridTemplateRows: `auto repeat(${gridSize}, minmax(0, 1fr)) auto`
+        }}
+      >
+        <div className={labelClass} aria-hidden="true" />
+        {columnLabels.map((label) => (
+          <div key={`top-col-${label}`} className={labelClass} aria-hidden="true">
+            {label}
+          </div>
+        ))}
+        <div className={labelClass} aria-hidden="true" />
+
+        {gameState.board.map((row, rowIndex) => (
+          <React.Fragment key={`row-${rowIndex}`}>
+            <div className={labelClass} aria-hidden="true">
+              {rowIndex + 1}
+            </div>
+
+            {row.map((cell, colIndex) => (
+              <Cell
+                key={`cell-${rowIndex}-${colIndex}`}
+                cell={cell}
+                row={rowIndex}
+                col={colIndex}
+                onCycleState={handleCycleState}
+                cellSizeClass={cellSizeClass}
+                isSuggested={
+                  suggestedMove?.row === rowIndex && suggestedMove?.col === colIndex
+                }
+              />
+            ))}
+
+            <div className={labelClass} aria-hidden="true">
+              {rowIndex + 1}
+            </div>
+          </React.Fragment>
+        ))}
+
+        <div className={labelClass} aria-hidden="true" />
+        {columnLabels.map((label) => (
+          <div
+            key={`bottom-col-${label}`}
+            className={labelClass}
+            aria-hidden="true"
+          >
+            {label}
+          </div>
+        ))}
+        <div className={labelClass} aria-hidden="true" />
+      </div>
     </div>
   );
 }
