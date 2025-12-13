@@ -19,6 +19,7 @@
   border: 1px solid #e0e0e0;
   padding-top: 100%; /* square cells */
   position: relative;
+  cursor: pointer;
 }
 
 .cell-hit {
@@ -31,6 +32,11 @@
 
 .cell-ship {
   background: #cfe3cf;
+}
+
+.cell-sunk {
+  background: linear-gradient(135deg, #fb7185, #b91c1c);
+  border-color: #9f1239;
 }
 
 .best-move-panel,
