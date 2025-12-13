@@ -4,6 +4,6 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"TODO: add tests for battleship-engine\" && exit 0"
+    "test": "node scripts/test-noTouch.js"
   }
 }
