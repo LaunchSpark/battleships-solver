@@ -60,9 +60,6 @@ export default function Cell({
           🎯
         </span>
       )}
-      {isSuggested && (
-        <span className="sr-only">Suggested move indicator</span>
-      )}
     </button>
   );
 }
