@@ -1,0 +1,17 @@
+{
+  "board": [
+    [{"status":0},{"status":0},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1},{"status":1},{"status":1},{"status":1}]
+  ],
+  "boats": [
+    {"id":5,"name":"Boat 2","length":2,"sunk":false},
+    {"id":6,"name":"Boat 4","length":4,"sunk":false}
+  ],
+  "shots":[]
+}
