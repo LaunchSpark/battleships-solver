@@ -13,15 +13,13 @@ export const TILE_STATUS = {
 export function createEmptyBoard(rows = 10, cols = 10) {
   return Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({
-      status: TILE_STATUS.UNKNOWN,
-      heat: 0 // 0-1 probability scale of a ship being present
+      status: TILE_STATUS.UNKNOWN
     }))
   );
 }
 
 export function createInitialGameState(options = {}) {
   return {
-    highHeat: 0,
     board: createEmptyBoard(options.rows ?? 10, options.cols ?? 10),
     // Boats are metadata only: { id?, name, length, sunk }
     // Placement happens implicitly inside the solver's silhouette generator.
@@ -41,15 +39,9 @@ export function applyShot(gameState, row, col, status = TILE_STATUS.MISS) {
     })
   );
 
-  const nextHighHeat = Math.max(
-    gameState.highHeat ?? 0,
-    ...nextBoard.flat().map((tile) => tile.heat ?? 0)
-  );
-
   return {
     ...gameState,
-    board: nextBoard,
-    highHeat: nextHighHeat
+    board: nextBoard
   };
 }
 

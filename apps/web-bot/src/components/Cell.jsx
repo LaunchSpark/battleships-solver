@@ -19,6 +19,7 @@ export default function Cell({
   cell,
   row,
   col,
+  heat = 0,
   onCycleState,
   cellSizeClass,
   isSuggested = false
@@ -26,15 +27,15 @@ export default function Cell({
   const status = cell?.status ?? TILE_STATUS.UNKNOWN;
   const label = STATUS_LABELS[status] ?? "";
   const backgroundClass = STATUS_BG_CLASS[status] ?? STATUS_BG_CLASS[TILE_STATUS.UNKNOWN];
-  const heat = status === TILE_STATUS.UNKNOWN ? cell?.heat ?? 0 : 0;
+  const heatValue = status === TILE_STATUS.UNKNOWN ? heat : 0;
 
   const heatMapStyle =
     status === TILE_STATUS.UNKNOWN
       ? {
           background: `linear-gradient(135deg,
-            rgba(56, 189, 248, ${0.08 + heat * 0.6}) 0%,
-            rgba(14, 165, 233, ${0.16 + heat * 0.55}) 45%,
-            rgba(59, 130, 246, ${0.12 + heat * 0.5}) 100%)`
+            rgba(56, 189, 248, ${0.08 + heatValue * 0.6}) 0%,
+            rgba(14, 165, 233, ${0.16 + heatValue * 0.55}) 45%,
+            rgba(59, 130, 246, ${0.12 + heatValue * 0.5}) 100%)`
         }
       : undefined;
 
