@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import { applyShot, TILE_STATUS } from "battleship-engine";
 import Cell from "./Cell.jsx";
 
@@ -8,7 +8,6 @@ const STATUS_ORDER = [
   TILE_STATUS.HIT,
   TILE_STATUS.SUNK
 ];
-// Keep the cycle deterministic across renders: UNKNOWN → MISS → HIT → SUNK → UNKNOWN.
 
 function getNextStatus(currentStatus) {
   const currentIndex = STATUS_ORDER.indexOf(currentStatus);
@@ -18,7 +17,16 @@ function getNextStatus(currentStatus) {
   return STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
 }
 
+function getCellSizeClass(gridSize) {
+  if (gridSize <= 8) return "w-10 h-10";
+  if (gridSize <= 12) return "w-8 h-8";
+  return "w-7 h-7";
+}
+
 export default function BoardView({ gameState, setGameState }) {
+  const gridSize = gameState.board?.length ?? 0;
+  const cellSizeClass = useMemo(() => getCellSizeClass(gridSize), [gridSize]);
+
   const handleCycleState = useCallback(
     (row, col) => {
       if (!setGameState) return;
@@ -33,20 +41,24 @@ export default function BoardView({ gameState, setGameState }) {
   );
 
   return (
-    <div className="board" role="grid" aria-label="player-board">
-      {gameState.board.map((row, rowIndex) => (
-        <div className="board-row" role="row" key={`row-${rowIndex}`}>
-          {row.map((cell, colIndex) => (
-            <Cell
-              key={`cell-${rowIndex}-${colIndex}`}
-              cell={cell}
-              row={rowIndex}
-              col={colIndex}
-              onCycleState={handleCycleState}
-            />
-          ))}
-        </div>
-      ))}
+    <div
+      className="inline-grid gap-1"
+      role="grid"
+      aria-label="player-board"
+      style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
+    >
+      {gameState.board.map((row, rowIndex) =>
+        row.map((cell, colIndex) => (
+          <Cell
+            key={`cell-${rowIndex}-${colIndex}`}
+            cell={cell}
+            row={rowIndex}
+            col={colIndex}
+            onCycleState={handleCycleState}
+            cellSizeClass={cellSizeClass}
+          />
+        ))
+      )}
     </div>
   );
 }

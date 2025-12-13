@@ -46,6 +46,19 @@ export function useGameState() {
     setLastSuggestion(null);
   }
 
+  function setBoardSize(nextSize) {
+    const parsed = Math.round(Number(nextSize) || 0);
+    const safeSize = Math.max(1, parsed);
+    setGameState((prev) =>
+      createInitialGameState({
+        rows: safeSize,
+        cols: safeSize,
+        boats: (prev.boats ?? []).map((boat) => ({ ...boat, sunk: false }))
+      })
+    );
+    setLastSuggestion(null);
+  }
+
   async function suggestMove() {
     // For now, call the engine directly in the browser.
     const move = await getBestMove(gameState);
@@ -61,6 +74,7 @@ export function useGameState() {
     addBoat,
     toggleBoatSunk,
     removeBoat,
-    resetBoard
+    resetBoard,
+    setBoardSize
   };
 }
