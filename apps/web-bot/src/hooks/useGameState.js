@@ -2,20 +2,12 @@ import { useRef, useState } from "react";
 import { createInitialGameState } from "battleship-engine";
 import { getBestMove } from "../services/botEngineClient.js";
 
-function cloneGameStateSnapshot(state) {
-  return {
-    highHeat: state?.highHeat ?? 0,
-    board: (state?.board ?? []).map((row) => row.map((cell) => ({ ...cell }))),
-    boats: (state?.boats ?? []).map((boat) => ({ ...boat })),
-    shots: Array.isArray(state?.shots) ? [...state.shots] : []
-  };
-}
-
 export function useGameState() {
   const [gameState, setGameState] = useState(() =>
     createInitialGameState()
   );
   const [lastSuggestion, setLastSuggestion] = useState(null);
+  const [heatmap, setHeatmap] = useState(null);
   const boatIdRef = useRef(1);
 
   function addBoat(length) {
@@ -53,6 +45,7 @@ export function useGameState() {
       })
     );
     setLastSuggestion(null);
+    setHeatmap(null);
   }
 
   function setBoardSize(nextSize) {
@@ -66,13 +59,13 @@ export function useGameState() {
       })
     );
     setLastSuggestion(null);
+    setHeatmap(null);
   }
 
   async function suggestMove() {
-    const botInput = cloneGameStateSnapshot(gameState);
-    const move = await getBestMove(botInput);
-    setGameState(botInput);
-    setLastSuggestion(move);
+    const result = await getBestMove(gameState);
+    setHeatmap(result?.heatmap ?? null);
+    setLastSuggestion(result?.move ?? null);
   }
 
   return {
@@ -80,6 +73,7 @@ export function useGameState() {
     setGameState,
     suggestMove,
     lastSuggestion,
+    heatmap,
     addBoat,
     toggleBoatSunk,
     removeBoat,

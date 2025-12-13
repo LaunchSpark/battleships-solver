@@ -27,7 +27,7 @@ function getLabelClass(cellSizeClass) {
   return `${cellSizeClass} text-[10px] sm:text-xs text-slate-400 font-semibold flex items-center justify-center bg-slate-900/80 rounded-md border border-slate-800`;
 }
 
-export default function BoardView({ gameState, setGameState, suggestedMove }) {
+export default function BoardView({ gameState, setGameState, suggestedMove, heatmap }) {
   const gridSize = gameState.board?.length ?? 0;
   const cellSizeClass = useMemo(() => getCellSizeClass(gridSize), [gridSize]);
   const labelClass = useMemo(() => getLabelClass(cellSizeClass), [cellSizeClass]);
@@ -79,6 +79,7 @@ export default function BoardView({ gameState, setGameState, suggestedMove }) {
                 cell={cell}
                 row={rowIndex}
                 col={colIndex}
+                heat={heatmap?.[rowIndex]?.[colIndex] ?? 0}
                 onCycleState={handleCycleState}
                 cellSizeClass={cellSizeClass}
                 isSuggested={

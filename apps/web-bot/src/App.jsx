@@ -8,6 +8,7 @@ export default function App() {
     setGameState,
     suggestMove,
     lastSuggestion,
+    heatmap,
     addBoat,
     toggleBoatSunk,
     removeBoat,
@@ -186,6 +187,7 @@ export default function App() {
               gameState={gameState}
               setGameState={setGameState}
               suggestedMove={lastSuggestion}
+              heatmap={heatmap}
             />
           </div>
 
