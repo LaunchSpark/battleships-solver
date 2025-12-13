@@ -1,20 +1,19 @@
 import React, { useCallback } from "react";
-import { applyShot } from "battleship-engine";
+import { applyShot, TILE_STATUS } from "battleship-engine";
 import Cell from "./Cell.jsx";
 
-const STATUS = {
-  UNKNOWN: 0,
-  WATER: 1,
-  HIT: 2,
-  SUNK: 3,
-};
-
-const STATUS_ORDER = [STATUS.UNKNOWN, STATUS.WATER, STATUS.HIT, STATUS.SUNK];
+const STATUS_ORDER = [
+  TILE_STATUS.UNKNOWN,
+  TILE_STATUS.MISS,
+  TILE_STATUS.HIT,
+  TILE_STATUS.SUNK
+];
+// Keep the cycle deterministic across renders: UNKNOWN → MISS → HIT → SUNK → UNKNOWN.
 
 function getNextStatus(currentStatus) {
   const currentIndex = STATUS_ORDER.indexOf(currentStatus);
   if (currentIndex === -1) {
-    return STATUS.UNKNOWN;
+    return TILE_STATUS.UNKNOWN;
   }
   return STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
 }
@@ -25,7 +24,7 @@ export default function BoardView({ gameState, setGameState }) {
       if (!setGameState) return;
 
       setGameState((prev) => {
-        const currentStatus = prev?.board?.[row]?.[col]?.status ?? STATUS.UNKNOWN;
+        const currentStatus = prev?.board?.[row]?.[col]?.status ?? TILE_STATUS.UNKNOWN;
         const nextStatus = getNextStatus(currentStatus);
         return applyShot(prev, row, col, nextStatus);
       });
