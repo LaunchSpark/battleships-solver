@@ -176,6 +176,11 @@ export default function App() {
             )}
           </div>
 
+          <p className="text-xs text-slate-500">
+            Unknown cells are filled with a blue heatmap after requesting a suggestion so you can see
+            the solver's confidence across the board.
+          </p>
+
           <div className="overflow-auto rounded-2xl border border-slate-800 bg-slate-950/80 p-2">
             <BoardView
               gameState={gameState}
