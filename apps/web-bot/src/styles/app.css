@@ -69,7 +69,9 @@ body {
 .text-right { text-align: right; }
 .text-xs { font-size: 0.75rem; }
 .text-sm { font-size: 0.875rem; }
+.text-lg { font-size: 1.125rem; }
 .text-xl { font-size: 1.25rem; }
+.text-\[10px\] { font-size: 10px; }
 .font-semibold { font-weight: 600; }
 .font-medium { font-weight: 500; }
 .text-slate-50 { color: var(--slate-50); }

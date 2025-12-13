@@ -21,7 +21,7 @@ export default function Cell({
   col,
   heat = 0,
   onCycleState,
-  cellSizeClass,
+  cellSizeStyle,
   isSuggested = false
 }) {
   const status = cell?.status ?? TILE_STATUS.UNKNOWN;
@@ -48,11 +48,11 @@ export default function Cell({
   return (
     <button
       type="button"
-      className={`relative flex items-center justify-center text-xs sm:text-sm font-semibold rounded-md border border-slate-800 active:scale-95 transition-transform ${backgroundClass} ${cellSizeClass} ${ringClass}`}
+      className={`relative flex items-center justify-center text-xs sm:text-sm font-semibold rounded-md border border-slate-800 active:scale-95 transition-transform ${backgroundClass} ${ringClass}`}
       aria-label={`cell row ${row + 1} column ${col + 1}${isSuggested ? " suggested move" : ""}`}
       role="gridcell"
       onClick={() => onCycleState?.(row, col)}
-      style={heatMapStyle}
+      style={{ ...heatMapStyle, ...cellSizeStyle }}
     >
       {shouldShowLabel && <span>{label}</span>}
       {isSuggested && (

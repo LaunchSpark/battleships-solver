@@ -17,20 +17,33 @@ function getNextStatus(currentStatus) {
   return STATUS_ORDER[(currentIndex + 1) % STATUS_ORDER.length];
 }
 
-function getCellSizeClass(gridSize) {
-  if (gridSize <= 8) return "w-10 h-10";
-  if (gridSize <= 12) return "w-8 h-8";
-  return "w-7 h-7";
+function getCellSize(gridSize) {
+  const maxSize = gridSize <= 8 ? 2.5 : gridSize <= 12 ? 2.1 : 1.8;
+  const columns = gridSize + 2; // include the row/column labels
+
+  return `clamp(1.35rem, calc((100vw - 3rem) / ${columns}), ${maxSize}rem)`;
 }
 
-function getLabelClass(cellSizeClass) {
-  return `${cellSizeClass} text-[10px] sm:text-xs text-slate-400 font-semibold flex items-center justify-center bg-slate-900/80 rounded-md border border-slate-800`;
+function getLabelClass() {
+  return "text-[10px] sm:text-xs text-slate-400 font-semibold flex items-center justify-center bg-slate-900/80 rounded-md border border-slate-800";
 }
 
 export default function BoardView({ gameState, setGameState, suggestedMove, heatmap }) {
   const gridSize = gameState.board?.length ?? 0;
-  const cellSizeClass = useMemo(() => getCellSizeClass(gridSize), [gridSize]);
-  const labelClass = useMemo(() => getLabelClass(cellSizeClass), [cellSizeClass]);
+  const cellSize = useMemo(() => getCellSize(gridSize), [gridSize]);
+  const cellSizeStyle = useMemo(
+    () => ({ width: cellSize, height: cellSize, minWidth: cellSize }),
+    [cellSize]
+  );
+  const labelClass = useMemo(() => getLabelClass(), []);
+  const templateColumns = useMemo(
+    () => `auto repeat(${gridSize}, ${cellSize}) auto`,
+    [gridSize, cellSize]
+  );
+  const templateRows = useMemo(
+    () => `auto repeat(${gridSize}, ${cellSize}) auto`,
+    [gridSize, cellSize]
+  );
   const columnLabels = useMemo(
     () => Array.from({ length: gridSize }, (_, index) => index + 1),
     [gridSize]
@@ -55,21 +68,26 @@ export default function BoardView({ gameState, setGameState, suggestedMove, heat
         className="grid gap-1"
         aria-label="player-board"
         style={{
-          gridTemplateColumns: `auto repeat(${gridSize}, minmax(0, 1fr)) auto`,
-          gridTemplateRows: `auto repeat(${gridSize}, minmax(0, 1fr)) auto`
+          gridTemplateColumns: templateColumns,
+          gridTemplateRows: templateRows
         }}
       >
-        <div className={labelClass} aria-hidden="true" />
+        <div className={labelClass} style={cellSizeStyle} aria-hidden="true" />
         {columnLabels.map((label) => (
-          <div key={`top-col-${label}`} className={labelClass} aria-hidden="true">
+          <div
+            key={`top-col-${label}`}
+            className={labelClass}
+            style={cellSizeStyle}
+            aria-hidden="true"
+          >
             {label}
           </div>
         ))}
-        <div className={labelClass} aria-hidden="true" />
+        <div className={labelClass} style={cellSizeStyle} aria-hidden="true" />
 
         {gameState.board.map((row, rowIndex) => (
           <React.Fragment key={`row-${rowIndex}`}>
-            <div className={labelClass} aria-hidden="true">
+            <div className={labelClass} style={cellSizeStyle} aria-hidden="true">
               {rowIndex + 1}
             </div>
 
@@ -81,24 +99,25 @@ export default function BoardView({ gameState, setGameState, suggestedMove, heat
                 col={colIndex}
                 heat={heatmap?.[rowIndex]?.[colIndex] ?? 0}
                 onCycleState={handleCycleState}
-                cellSizeClass={cellSizeClass}
+                cellSizeStyle={cellSizeStyle}
                 isSuggested={
                   suggestedMove?.row === rowIndex && suggestedMove?.col === colIndex
                 }
               />
             ))}
 
-            <div className={labelClass} aria-hidden="true">
+            <div className={labelClass} style={cellSizeStyle} aria-hidden="true">
               {rowIndex + 1}
             </div>
           </React.Fragment>
         ))}
 
-        <div className={labelClass} aria-hidden="true" />
+        <div className={labelClass} style={cellSizeStyle} aria-hidden="true" />
         {columnLabels.map((label) => (
           <div
             key={`bottom-col-${label}`}
             className={labelClass}
+            style={cellSizeStyle}
             aria-hidden="true"
           >
             {label}
