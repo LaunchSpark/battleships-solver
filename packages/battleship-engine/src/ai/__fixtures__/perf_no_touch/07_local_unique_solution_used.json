@@ -1,0 +1,13 @@
+{
+  "board": [
+    [{"status":1},{"status":1},{"status":1},{"status":1},{"status":1}],
+    [{"status":1},{"status":2},{"status":0},{"status":0},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":0},{"status":1}],
+    [{"status":1},{"status":0},{"status":0},{"status":0},{"status":1}],
+    [{"status":1},{"status":1},{"status":1},{"status":1},{"status":1}]
+  ],
+  "boats": [
+    {"id":12,"name":"Boat 3","length":3,"sunk":false}
+  ],
+  "shots":[]
+}

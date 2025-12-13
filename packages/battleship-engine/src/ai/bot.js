@@ -2,6 +2,20 @@
 
 import { TILE_STATUS } from "../gameState.js";
 
+// Local solve limits
+export const ROI_MAX_AREA = 36; // e.g., 6x6
+export const ROI_PAD = 1; // ROI padding around cluster bbox
+export const MAX_SOLVE_NODES = 6000; // backtracking node budget
+export const MAX_SOLVE_SOLUTIONS = 200; // optional early stop if too many
+
+// Heat / weighting
+export const LENGTH_WEIGHT_EXP = 1.5; // weight ships by L^exp
+export const HIT_BONUS = 0.25; // base multiplier for placements that touch hits
+export const ALPHA_ENDPOINT = 0.75; // endpoint continuation multiplier in target mode
+
+// Hunt parity
+export const ENABLE_PARITY_HUNT = true;
+
 /**
  * Convert (r,c) into stable string key for Set/Map.
  * @param {number} r
@@ -239,6 +253,52 @@ function placementCoversCluster(placement, cluster) {
   );
 }
 
+function placementTouchesHits(placement, board) {
+  return placement.cells.some((cell) => board[cell.r]?.[cell.c]?.status === TILE_STATUS.HIT);
+}
+
+function placementCoversAny(placement, targets) {
+  if (!targets || targets.length === 0) return false;
+  if (targets instanceof Set) {
+    return placement.cells.some((cell) => targets.has(key(cell.r, cell.c)));
+  }
+  return targets.some((cell) => placement.cells.some((p) => p.r === cell.r && p.c === cell.c));
+}
+
+function computeClusterEndpoints(cluster, board) {
+  const deltas = dirs4();
+  const endpoints = [];
+  for (const cell of cluster.cells) {
+    let hitNeighbors = 0;
+    for (const [dr, dc] of deltas) {
+      const nr = cell.r + dr;
+      const nc = cell.c + dc;
+      if (board[nr]?.[nc]?.status === TILE_STATUS.HIT) {
+        hitNeighbors += 1;
+      }
+    }
+    if (hitNeighbors <= 1) {
+      endpoints.push(cell);
+    }
+  }
+  return endpoints;
+}
+
+function computeEndpointAdjacentUnknowns(endpoints, board) {
+  const deltas = dirs4();
+  const unknowns = new Set();
+  for (const cell of endpoints) {
+    for (const [dr, dc] of deltas) {
+      const nr = cell.r + dr;
+      const nc = cell.c + dc;
+      if (inBounds(board, nr, nc) && isUnknown(board, nr, nc)) {
+        unknowns.add(key(nr, nc));
+      }
+    }
+  }
+  return unknowns;
+}
+
 /**
  * Compute bounding box around a cluster and expand it.
  * @param {{cells: Cell[]}} cluster
@@ -273,10 +333,13 @@ function solveLocalPacking({
   roi,
   boatsRemaining,
   constraints,
-  requiredHitCells
+  requiredHitCells,
+  maxNodes = Infinity,
+  maxSolutions = Infinity
 }) {
   const shipCountHeat = new Map();
   let totalSolutions = 0;
+  let nodesVisited = 0;
   const { rows, cols } = getBoardSize(board);
 
   const roiFilter = (cell) =>
@@ -303,6 +366,10 @@ function solveLocalPacking({
   const occupiedHalo = new Set();
 
   function backtrack(index) {
+    if (nodesVisited >= maxNodes || totalSolutions >= maxSolutions) {
+      return;
+    }
+    nodesVisited += 1;
     if (index === boatsSorted.length) {
       const coversAllHits = requiredKeys.every((k) => occupiedHull.has(k));
       if (!coversAllHits) return;
@@ -316,6 +383,9 @@ function solveLocalPacking({
     const boat = boatsSorted[index];
     const options = placementOptions.get(boat.id ?? boat.name ?? boat.length) ?? [];
     for (const placement of options) {
+      if (nodesVisited >= maxNodes || totalSolutions >= maxSolutions) {
+        return;
+      }
       let blocked = false;
       const hullKeys = placement.cells.map((cell) => key(cell.r, cell.c));
       for (const hk of hullKeys) {
@@ -347,7 +417,7 @@ function solveLocalPacking({
 
   backtrack(0);
 
-  return { totalSolutions, shipCountHeat };
+  return { totalSolutions, shipCountHeat, nodesVisited };
 }
 
 function localCountsToProbGrid(shipCountHeat, totalSolutions, rows, cols) {
@@ -363,6 +433,52 @@ function localCountsToProbGrid(shipCountHeat, totalSolutions, rows, cols) {
 function entropy01(p) {
   if (p <= 0 || p >= 1) return 0;
   return -p * Math.log2(p) - (1 - p) * Math.log2(1 - p);
+}
+
+function runLocalSolvers({ board, hitClusters, boatsRemaining, constraints }) {
+  const { rows, cols } = getBoardSize(board);
+  const results = new Map();
+  const diagnostics = { attempts: 0, usedClusters: [] };
+  const maxShipLength = boatsRemaining.reduce((m, boat) => Math.max(m, boat.length ?? 0), 0);
+
+  hitClusters.forEach((cluster, clusterIndex) => {
+    let pad = Math.max(ROI_PAD, maxShipLength);
+    let roi = roiFromCluster(cluster, rows, cols, pad);
+    let area = (roi.r1 - roi.r0 + 1) * (roi.c1 - roi.c0 + 1);
+    while (area > ROI_MAX_AREA && pad > ROI_PAD) {
+      pad -= 1;
+      roi = roiFromCluster(cluster, rows, cols, pad);
+      area = (roi.r1 - roi.r0 + 1) * (roi.c1 - roi.c0 + 1);
+    }
+    if (area > ROI_MAX_AREA) return;
+    diagnostics.attempts += 1;
+
+    const requiredHitCells = cluster.cells;
+    const { totalSolutions, shipCountHeat, nodesVisited } = solveLocalPacking({
+      board,
+      roi,
+      boatsRemaining,
+      constraints,
+      requiredHitCells,
+      maxNodes: MAX_SOLVE_NODES,
+      maxSolutions: MAX_SOLVE_SOLUTIONS
+    });
+
+    let probGrid = null;
+    if (totalSolutions >= 1) {
+      probGrid = localCountsToProbGrid(shipCountHeat, totalSolutions, rows, cols);
+      diagnostics.usedClusters.push(clusterIndex);
+    }
+
+    results.set(clusterIndex, {
+      roi,
+      totalSolutions,
+      probGrid,
+      nodesVisited
+    });
+  });
+
+  return { results, diagnostics };
 }
 
 function addUniquePlacements(target, additions, seen) {
@@ -398,9 +514,16 @@ function buildPlacementPools(board, shipsRemaining, hitClusters, constraints) {
 
   if (hitClusters.length === 0) {
     baseByLength.forEach((placements) => strictPlacements.push(...placements));
+    const placementPools = new Map();
+    strictPlacements.forEach((placement) => {
+      const bucket = placementPools.get(placement.length) ?? [];
+      bucket.push(placement);
+      placementPools.set(placement.length, bucket);
+    });
     return {
       placementsConsidered,
       placementsForHeat: strictPlacements,
+      placementPools,
       clustersDiagnostics,
       unexplainedHits
     };
@@ -432,36 +555,80 @@ function buildPlacementPools(board, shipsRemaining, hitClusters, constraints) {
   });
 
   const placementsForHeat = strictPlacements.length > 0 ? strictPlacements : fallbackPlacements;
+  const placementPools = new Map();
+  placementsForHeat.forEach((placement) => {
+    const bucket = placementPools.get(placement.length) ?? [];
+    bucket.push(placement);
+    placementPools.set(placement.length, bucket);
+  });
 
   return {
     placementsConsidered,
     placementsForHeat,
+    placementPools,
     clustersDiagnostics,
     unexplainedHits
   };
 }
 
-function scoreHeat(board, placements, shipsRemaining) {
+function scoreHeat({ board, placementPools, boatsRemaining, hitClusters, mode, targetCluster }) {
   const { rows, cols } = getBoardSize(board);
   const rawHeat = Array.from({ length: rows }, () => Array(cols).fill(0));
-  const placementsByLength = new Map();
 
-  placements.forEach((placement) => {
-    const bucket = placementsByLength.get(placement.length) ?? [];
-    bucket.push(placement);
-    placementsByLength.set(placement.length, bucket);
-  });
+  const byLength = new Map();
+  for (const [length, placements] of placementPools.entries()) {
+    byLength.set(length, { placements, count: placements.length });
+  }
 
-  for (const ship of shipsRemaining) {
-    const placementsForShip = placementsByLength.get(ship.length) ?? [];
-    const contribution = placementsForShip.length > 0 ? 1 / placementsForShip.length : 0;
-    for (const placement of placementsForShip) {
-      const hitsCovered = placement.cells.filter((cell) => board[cell.r]?.[cell.c]?.status === TILE_STATUS.HIT).length;
-      const multiplier = 1 + (hitsCovered > 0 ? hitsCovered / placement.length : 0);
-      const weighted = contribution * multiplier;
+  const shipWeight = (L) => Math.pow(L, LENGTH_WEIGHT_EXP);
+
+  let endpointUnknowns = null;
+  if (mode === "target") {
+    const clustersForEndpoints = targetCluster ? [targetCluster] : hitClusters;
+    clustersForEndpoints.forEach((cluster) => {
+      const endpoints = computeClusterEndpoints(cluster, board);
+      const unknowns = computeEndpointAdjacentUnknowns(endpoints, board);
+      endpointUnknowns = endpointUnknowns ? new Set([...endpointUnknowns, ...unknowns]) : new Set(unknowns);
+    });
+  }
+
+  for (const ship of boatsRemaining) {
+    const entry = byLength.get(ship.length);
+    if (!entry) continue;
+    const { placements, count } = entry;
+    const base = shipWeight(ship.length) / Math.max(1, count);
+
+    for (const placement of placements) {
+      let mult = 1;
+      if (placementTouchesHits(placement, board)) {
+        mult *= 1 + HIT_BONUS;
+      }
+
+      if (mode === "target" && targetCluster && endpointUnknowns) {
+        if (placementCoversAny(placement, endpointUnknowns)) {
+          mult *= 1 + ALPHA_ENDPOINT;
+        }
+      }
+
+      const weighted = base * mult;
       placement.cells.forEach(({ r, c }) => {
         rawHeat[r][c] += weighted;
       });
+    }
+  }
+
+  let minLength = Infinity;
+  boatsRemaining.forEach((boat) => {
+    minLength = Math.min(minLength, boat.length);
+  });
+
+  if (ENABLE_PARITY_HUNT && mode === "hunt" && minLength >= 2) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r + c) % 2 === 1) {
+          rawHeat[r][c] = 0;
+        }
+      }
     }
   }
 
@@ -472,7 +639,7 @@ function scoreHeat(board, placements, shipsRemaining) {
     }
   }
 
-  const hasAnyPlacement = placements.length > 0 && maxHeat > 0;
+  const hasAnyPlacement = placementPools.size > 0 && maxHeat > 0;
   const heatmap = Array.from({ length: rows }, () => Array(cols).fill(0));
   if (!hasAnyPlacement) {
     return { rawHeat, heatmap, rawHeatMax: maxHeat, hasAnyPlacement };
@@ -491,70 +658,240 @@ function isUnknown(board, r, c) {
   return board[r]?.[c]?.status === TILE_STATUS.UNKNOWN;
 }
 
+function listCellsWhere(board, predicate) {
+  const { rows, cols } = getBoardSize(board);
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (predicate(board?.[r]?.[c], r, c)) {
+        cells.push({ r, c });
+      }
+    }
+  }
+  return cells;
+}
+
 function selectBestShot({
   board,
   heatmap,
   hitClusters,
-  localProbGrid,
-  localRoi
+  localResultsByCluster,
+  diagnostics
 }) {
   const { rows, cols } = getBoardSize(board);
-  const hasHits = hitClusters.length > 0;
-  const adjacency = new Set();
+  const globalUnknowns = listCellsWhere(
+    board,
+    (tile) => tile?.status === TILE_STATUS.UNKNOWN
+  );
 
-  if (!localProbGrid) {
-    hitClusters.forEach((cluster) => {
-      cluster.cells.forEach(({ r, c }) => {
-        dirs4().forEach(([dr, dc]) => {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (inBounds(board, nr, nc) && isUnknown(board, nr, nc)) {
-            adjacency.add(key(nr, nc));
-          }
-        });
-      });
-    });
+  const bestByHeat = (candidates) => {
+    let best = { row: -1, col: -1, score: -1 };
+    for (const { r, c } of candidates) {
+      const heat = heatmap?.[r]?.[c] ?? 0;
+      if (
+        heat > best.score ||
+        (heat === best.score &&
+          (best.row === -1 || r < best.row || (r === best.row && c < best.col)))
+      ) {
+        best = { row: r, col: c, score: heat };
+      }
+    }
+    return best;
+  };
+
+  const mode = hitClusters.length > 0 ? "target" : "hunt";
+
+  if (mode === "hunt") {
+    const best = bestByHeat(globalUnknowns);
+    diagnostics.selection = { type: "hunt-heat" };
+    return { ...best, why: "global heat", clusterIndex: null, selectionType: "hunt" };
   }
 
-  let best = { row: -1, col: -1, score: -1, why: "" };
+  const clusterPromises = hitClusters.map((cluster, index) => {
+    const adjSet = new Set();
+    cluster.cells.forEach(({ r, c }) => {
+      dirs4().forEach(([dr, dc]) => {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (inBounds(board, nr, nc) && isUnknown(board, nr, nc)) {
+          adjSet.add(key(nr, nc));
+        }
+      });
+    });
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (!isUnknown(board, r, c)) continue;
+    const adjacentUnknowns = Array.from(adjSet)
+      .map((k) => {
+        const [r, c] = k.split(",").map(Number);
+        return { r, c };
+      })
+      .sort((a, b) => (a.r === b.r ? a.c - b.c : a.r - b.r));
+    const adjHeatValues = adjacentUnknowns.map(({ r, c }) => heatmap?.[r]?.[c] ?? 0);
+    const maxAdjHeat = adjHeatValues.length > 0 ? Math.max(...adjHeatValues) : 0;
+    const endpointAdjSet = computeEndpointAdjacentUnknowns(
+      computeClusterEndpoints(cluster, board),
+      board
+    );
 
-      if (localProbGrid && localRoi) {
-        if (r < localRoi.r0 || r > localRoi.r1 || c < localRoi.c0 || c > localRoi.c1) {
-          continue;
+    const local = localResultsByCluster?.get(index);
+    let bestEntropyCell = null;
+    let bestEntropyValue = -1;
+    let deterministicCell = null;
+    if (local?.probGrid) {
+      const { roi } = local;
+      const r0 = roi?.r0 ?? 0;
+      const r1 = roi?.r1 ?? rows - 1;
+      const c0 = roi?.c0 ?? 0;
+      const c1 = roi?.c1 ?? cols - 1;
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          if (!isUnknown(board, r, c)) continue;
+          const p = local.probGrid?.[r]?.[c] ?? 0;
+          if (p === 1) {
+            if (
+              !deterministicCell ||
+              r < deterministicCell.r ||
+              (r === deterministicCell.r && c < deterministicCell.c)
+            ) {
+              deterministicCell = { r, c };
+            }
+          }
+          if (local.totalSolutions >= 2) {
+            const ent = entropy01(p);
+            if (
+              ent > bestEntropyValue ||
+              (ent === bestEntropyValue &&
+                bestEntropyCell &&
+                p > (local.probGrid?.[bestEntropyCell.r]?.[bestEntropyCell.c] ?? -1)) ||
+              (ent === bestEntropyValue &&
+                (!bestEntropyCell ||
+                  (endpointAdjSet?.has(key(r, c)) && !endpointAdjSet?.has(key(bestEntropyCell.r, bestEntropyCell.c))) ||
+                  r < bestEntropyCell.r ||
+                  (r === bestEntropyCell.r && c < bestEntropyCell.c)))
+            ) {
+              bestEntropyValue = ent;
+              bestEntropyCell = { r, c };
+            }
+          }
         }
-        const p = localProbGrid?.[r]?.[c] ?? 0;
-        const ent = entropy01(p);
-        if (
-          ent > best.score ||
-          (ent === best.score && p > (localProbGrid?.[best.row]?.[best.col] ?? -1)) ||
-          (ent === best.score && p === (localProbGrid?.[best.row]?.[best.col] ?? -1) &&
-            (best.row === -1 || r < best.row || (r === best.row && c < best.col)))
-        ) {
-          best = { row: r, col: c, score: ent, why: "local-entropy" };
-        }
-      } else {
-        if (hasHits && adjacency.size > 0 && !adjacency.has(key(r, c))) {
-          continue;
-        }
-        const cellHeat = heatmap?.[r]?.[c] ?? 0;
-        const cellRaw = heatmap?.[r]?.[c] ?? 0;
-        if (
-          cellHeat > best.score ||
-          (cellHeat === best.score && cellRaw > (heatmap?.[best.row]?.[best.col] ?? -1)) ||
-          (cellHeat === best.score && cellRaw === (heatmap?.[best.row]?.[best.col] ?? -1) &&
-            (best.row === -1 || r < best.row || (r === best.row && c < best.col)))
-        ) {
-          best = { row: r, col: c, score: cellHeat, why: hasHits ? "adjacent-heat" : "heat" };
-        }
+      }
+    }
+
+    return {
+      index,
+      cluster,
+      adjacentUnknowns,
+      maxAdjHeat,
+      local,
+      endpointAdjSet,
+      bestEntropyCell,
+      bestEntropyValue,
+      deterministicCell
+    };
+  });
+
+  let chosen = null;
+  let selectionType = "";
+
+  for (const promise of clusterPromises) {
+    if (promise.local?.totalSolutions === 1 && promise.deterministicCell) {
+      if (
+        !chosen ||
+        promise.deterministicCell.r < chosen.cell.r ||
+        (promise.deterministicCell.r === chosen.cell.r &&
+          promise.deterministicCell.c < chosen.cell.c)
+      ) {
+        chosen = { ...promise, cell: promise.deterministicCell };
+        selectionType = "local deterministic";
       }
     }
   }
 
-  return best;
+  if (!chosen) {
+    let bestEntropyScore = -1;
+    let bestEntropySolutions = Infinity;
+    for (const promise of clusterPromises) {
+      if (!promise.local || promise.local.totalSolutions < 2) continue;
+      if (!promise.bestEntropyCell) continue;
+      const entropyScore =
+        promise.bestEntropyValue / Math.max(1, Math.sqrt(promise.local.totalSolutions));
+      if (
+        entropyScore > bestEntropyScore ||
+        (entropyScore === bestEntropyScore &&
+          promise.local.totalSolutions < bestEntropySolutions) ||
+        (entropyScore === bestEntropyScore &&
+          promise.local.totalSolutions === bestEntropySolutions &&
+          chosen &&
+          promise.bestEntropyCell &&
+          (promise.bestEntropyCell.r < chosen.cell.r ||
+            (promise.bestEntropyCell.r === chosen.cell.r && promise.bestEntropyCell.c < chosen.cell.c)))
+      ) {
+        bestEntropyScore = entropyScore;
+        bestEntropySolutions = promise.local.totalSolutions;
+        chosen = { ...promise, cell: promise.bestEntropyCell };
+        selectionType = "local entropy";
+      }
+    }
+  }
+
+  if (!chosen) {
+    let bestAdj = -1;
+    for (const promise of clusterPromises) {
+      if (promise.maxAdjHeat <= 0) continue;
+      if (promise.maxAdjHeat > bestAdj || (promise.maxAdjHeat === bestAdj && promise.index < (chosen?.index ?? Infinity))) {
+        const adjBest = bestByHeat(promise.adjacentUnknowns);
+        chosen = { ...promise, cell: { r: adjBest.row, c: adjBest.col }, heatScore: adjBest.score };
+        bestAdj = promise.maxAdjHeat;
+        selectionType = "adjacent heat";
+      }
+    }
+  }
+
+  if (!chosen) {
+    const best = bestByHeat(globalUnknowns);
+    diagnostics.selection = { type: "global-fallback", clusterIndex: null };
+    return {
+      row: best.row,
+      col: best.col,
+      score: best.score,
+      why: "global fallback",
+      clusterIndex: null,
+      selectionType: "global"
+    };
+  }
+
+  diagnostics.selection = {
+    type: selectionType,
+    clusterIndex: chosen.index,
+    clusterSize: chosen.cluster.cells.length,
+    localSolutions: chosen.local?.totalSolutions,
+    maxAdjHeat: chosen.maxAdjHeat
+  };
+
+  const useAdjacency = chosen.maxAdjHeat > 0 && selectionType === "adjacent heat";
+  if (useAdjacency) {
+    return {
+      row: chosen.cell.r,
+      col: chosen.cell.c,
+      score: chosen.heatScore ?? (heatmap?.[chosen.cell.r]?.[chosen.cell.c] ?? 0),
+      why: "adjacent heat",
+      clusterIndex: chosen.index,
+      selectionType
+    };
+  }
+
+  return {
+    row: chosen.cell.r,
+    col: chosen.cell.c,
+    score:
+      selectionType === "local deterministic"
+        ? 1
+        : selectionType === "local entropy"
+          ? chosen.local?.probGrid?.[chosen.cell.r]?.[chosen.cell.c] ?? 0
+          : heatmap?.[chosen.cell.r]?.[chosen.cell.c] ?? 0,
+    why: selectionType,
+    clusterIndex: chosen.index,
+    selectionType
+  };
 }
 
 export function getBestMove(gameData) {
@@ -588,73 +925,52 @@ export function getBestMove(gameData) {
   const {
     placementsConsidered,
     placementsForHeat,
+    placementPools,
     clustersDiagnostics,
     unexplainedHits
   } = buildPlacementPools(board, shipsRemaining, hitClusters, constraints);
 
-  const { rawHeat, heatmap, rawHeatMax, hasAnyPlacement } = scoreHeat(
+  const { rawHeat, heatmap, rawHeatMax, hasAnyPlacement } = scoreHeat({
     board,
-    placementsForHeat,
-    shipsRemaining
-  );
+    placementPools,
+    boatsRemaining: shipsRemaining,
+    hitClusters,
+    mode,
+    targetCluster: null
+  });
 
   const placementValidCount = placementsForHeat.length;
 
-  let localProbGrid = null;
-  let localRoi = null;
-  let localSolveDiagnostics = { used: false };
+  let localResultsByCluster = new Map();
+  let localSolveDiagnostics = { attempts: 0, usedClusters: [], perCluster: [] };
 
   if (hitClusters.length > 0) {
-    const primaryCluster = hitClusters[0];
-    const roi = roiFromCluster(primaryCluster, constraints.rows, constraints.cols, 2);
-    const area = (roi.r1 - roi.r0 + 1) * (roi.c1 - roi.c0 + 1);
-    if (area <= 36 && shipsRemaining.length <= 5) {
-      const requiredHits = [];
-      for (let r = roi.r0; r <= roi.r1; r++) {
-        for (let c = roi.c0; c <= roi.c1; c++) {
-          if (board[r]?.[c]?.status === TILE_STATUS.HIT) {
-            requiredHits.push({ r, c });
-          }
-        }
-      }
-
-      const { totalSolutions, shipCountHeat } = solveLocalPacking({
-        board,
-        roi,
-        boatsRemaining: shipsRemaining,
-        constraints,
-        requiredHitCells: requiredHits
-      });
-
-      if (totalSolutions >= 1) {
-        localProbGrid = localCountsToProbGrid(
-          shipCountHeat,
-          totalSolutions,
-          constraints.rows,
-          constraints.cols
-        );
-        localRoi = roi;
-      }
-
-      localSolveDiagnostics = {
-        used: totalSolutions >= 2,
-        roi,
-        totalSolutions
-      };
-
-      if (totalSolutions < 2) {
-        localProbGrid = null;
-        localRoi = null;
-      }
-    }
+    const { results, diagnostics: localDiagnostics } = runLocalSolvers({
+      board,
+      hitClusters,
+      boatsRemaining: shipsRemaining,
+      constraints
+    });
+    localResultsByCluster = results;
+    localSolveDiagnostics = {
+      attempts: localDiagnostics.attempts,
+      usedClusters: localDiagnostics.usedClusters,
+      perCluster: Array.from(results.entries()).map(([clusterIndex, value]) => ({
+        clusterIndex,
+        totalSolutions: value.totalSolutions,
+        nodesVisited: value.nodesVisited,
+        roi: value.roi
+      }))
+    };
   }
 
+  const selectionDiagnostics = {};
   const choice = selectBestShot({
     board,
     heatmap,
     hitClusters,
-    localProbGrid,
-    localRoi
+    localResultsByCluster,
+    diagnostics: selectionDiagnostics
   });
 
   const shipsRemainingSummary = shipsRemaining.map((boat) => ({ name: boat.name, length: boat.length }));
@@ -666,18 +982,27 @@ export function getBestMove(gameData) {
     hitClusters: clustersDiagnostics,
     unexplainedHits,
     rules: { noTouch: true },
-    localSolve: localSolveDiagnostics
+    localSolve: localSolveDiagnostics,
+    selection: selectionDiagnostics.selection
   };
 
   let reason = "";
   if (choice.row === -1 || choice.col === -1) {
     reason = "No unknown tiles available for targeting.";
   } else {
-    const baseScore =
-      localProbGrid && choice.row >= 0 && choice.col >= 0
-        ? localProbGrid?.[choice.row]?.[choice.col] ?? 0
-        : heatmap?.[choice.row]?.[choice.col] ?? 0;
-    reason = `Selected ${mode} mode tile with score ${baseScore.toFixed(3)} using ${choice.why}. No-touch rule active.`;
+    const baseScore = choice.score ?? 0;
+    const parts = [
+      `Selected ${mode} mode tile`,
+      selectionDiagnostics.selection?.type ? `via ${selectionDiagnostics.selection.type}` : null,
+      choice.clusterIndex !== null && choice.clusterIndex !== undefined
+        ? `on cluster ${choice.clusterIndex}`
+        : null,
+      `with score ${baseScore.toFixed(3)}.`
+    ].filter(Boolean);
+    reason = `${parts.join(" ")} No-touch rule active.`;
+    if (selectionDiagnostics.selection?.clusterSize) {
+      reason += ` Cluster size ${selectionDiagnostics.selection.clusterSize}.`;
+    }
   }
 
   if (unexplainedHits.length > 0) {
@@ -689,18 +1014,15 @@ export function getBestMove(gameData) {
     reason += ` Unexplained hits present; using relaxed placements for clusters: ${details}.`;
   }
 
-  if (localSolveDiagnostics.used) {
-    reason += ` Local exact solve found ${localSolveDiagnostics.totalSolutions} solutions; maximizing information gain within ROI.`;
+  if (localSolveDiagnostics.attempts > 0) {
+    reason += ` Local exact solve attempted on ${localSolveDiagnostics.attempts} cluster(s); usable results for ${localSolveDiagnostics.usedClusters.length}.`;
   }
 
   return {
     move: {
       row: choice.row,
       col: choice.col,
-      scoreNormalized:
-        (localProbGrid && choice.row >= 0 && choice.col >= 0
-          ? localProbGrid?.[choice.row]?.[choice.col]
-          : heatmap?.[choice.row]?.[choice.col]) ?? 0,
+      scoreNormalized: choice.score ?? 0,
       reason
     },
     heatmap,
